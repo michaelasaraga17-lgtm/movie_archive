@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Movie Archive</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..600;1,6..96,400..600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#111315',     // page
+            surface: '#181b1e', // inputs, poster backing
+            panel: '#14171a',   // detail panel
+            line: '#2a2e33',    // hairlines
+            bone: '#ece9e2',    // main text
+            soft: '#b9bcc1',    // body text
+            mute: '#8e9197',    // secondary text
+            accent: '#d7bf94'   // champagne, the one accent
+          },
+          fontFamily: {
+            display: ['"Bodoni Moda"', 'Georgia', 'serif'],
+            sans: ['"Hanken Grotesk"', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    html { background: #111315; color-scheme: dark; scrollbar-color: #2f343a #111315; }
+    ::selection { background: #d7bf94; color: #111315; }
+    :focus-visible { outline: 2px solid #d7bf94; outline-offset: 3px; }
+    select option { background: #181b1e; color: #ece9e2; }
+
+    /* Soft color from the featured poster, blurred behind the page top. Fades in once the image has loaded. */
+    .ambient { background-size: cover; background-position: center; filter: blur(64px) saturate(1.25);
+               transform: scale(1.3); opacity: 0; transition: opacity 1.2s ease; }
+    .ambient.on { opacity: .5; }
+
+    /* Posters sit slightly above the page */
+    .poster { box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 22px 44px -22px rgba(0,0,0,.85); transition: box-shadow .35s; }
+    .card { transition: transform .35s cubic-bezier(.2,.7,.2,1); }
+    .card:hover { transform: translateY(-6px); }
+    .card:hover .poster { box-shadow: 0 0 0 1px rgba(215,191,148,.5), 0 30px 50px -22px rgba(0,0,0,.95); }
+
+    /* Bookmark / watchlist buttons */
+    .save-btn { color: #ece9e2; }
+    .save-btn svg { fill: none; }
+    .save-btn[aria-pressed="true"] { color: #d7bf94; }
+    .save-btn[aria-pressed="true"] svg { fill: currentColor; }
+    .card:hover .card-title { color: #d7bf94; }
+    .card-title { transition: color .25s; }
+
+    /* Staggered poster grid: every second poster sits a little lower */
+    #grid > li:nth-child(even) { margin-top: 1.5rem; }
+    @media (min-width: 768px) { #grid > li:nth-child(even) { margin-top: 2.5rem; } }
+
+    /* Genre list */
+    .genre-btn { color: #b9bcc1; }
+    .genre-btn:hover { color: #ece9e2; background: rgba(255,255,255,.03); }
+    .genre-btn[aria-pressed="true"] { color: #ece9e2; background: rgba(255,255,255,.06); box-shadow: inset 2px 0 0 #d7bf94; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+      .card:hover { transform: none; }
+    }
+  </style>
+</head>
+
+<body class="bg-ink text-bone font-sans antialiased">
+
+  <!-- Hero: header + featured film -->
+  <div class="relative overflow-hidden">
+    <div id="ambient" class="ambient absolute inset-0" aria-hidden="true"></div>
+    <div class="absolute inset-0 bg-gradient-to-b from-ink/20 via-ink/60 to-ink" aria-hidden="true"></div>
+
+    <div class="relative">
+      <header class="max-w-[1400px] mx-auto px-6 lg:px-12 pt-8 flex items-center justify-between">
+        <a href="index.html" class="flex items-center gap-3 font-display text-2xl tracking-tight">
+          <svg width="20" height="26" viewBox="0 0 20 26" fill="none" aria-hidden="true">
+            <rect x="1" y="1" width="18" height="24" rx="2" stroke="#d7bf94" stroke-width="1.5"/>
+            <rect x="5" y="17" width="10" height="2" fill="#d7bf94"/>
+          </svg>
+          Movie Archive
+        </a>
+        <p class="hidden sm:block text-sm text-soft">A small index of films worth revisiting.</p>
+      </header>
+
+      <section id="featured" aria-live="polite" class="max-w-[1400px] mx-auto px-6 lg:px-12 pt-14 pb-20 lg:pt-20 lg:pb-28 min-h-[26rem]">
+        <div class="grid md:grid-cols-[minmax(240px,400px)_1fr] gap-12 lg:gap-20 items-center" aria-hidden="true">
+          <div class="aspect-[2/3] w-full max-w-[400px] rounded-[4px] bg-white/5"></div>
+          <div class="space-y-5"><div class="h-20 w-3/4 bg-white/5"></div><div class="h-4 w-1/2 bg-white/5"></div><div class="h-4 w-2/3 bg-white/5"></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <main class="max-w-[1400px] mx-auto px-6 lg:px-12">
+    <section class="py-16 lg:py-24 lg:grid lg:grid-cols-[14rem_1fr] lg:gap-16">
+
+      <!-- Filters -->
+      <aside class="mb-12 lg:mb-0">
+        <div class="lg:sticky lg:top-8 space-y-9">
+          <div class="relative">
+            <svg class="absolute left-4 top-1/2 -translate-y-1/2 text-mute pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <label for="search" class="sr-only">Search by title</label>
+            <input id="search" type="search" maxlength="100" autocomplete="off" placeholder="Search by title"
+                   class="w-full rounded-full bg-surface border border-line focus:border-accent pl-11 pr-4 py-3 text-sm placeholder:text-mute transition-colors">
+          </div>
+
+          <div>
+            <h2 class="text-sm text-mute mb-3 px-3">Genre</h2>
+            <ul id="genres" class="flex flex-wrap gap-2 lg:block lg:space-y-0.5"></ul>
+          </div>
+
+          <div>
+            <label for="year" class="text-sm text-mute block mb-3 px-3">Release year</label>
+            <div class="relative">
+              <select id="year" class="w-full appearance-none rounded-full bg-surface border border-line focus:border-accent pl-4 pr-10 py-3 text-sm transition-colors">
+                <option value="">Any year</option>
+              </select>
+              <svg class="absolute right-4 top-1/2 -translate-y-1/2 text-mute pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <button id="clear" type="button" class="px-3 text-sm text-accent hover:text-bone underline underline-offset-4 hidden">Clear filters</button>
+        </div>
+      </aside>
+
+      <!-- Index -->
+      <div>
+        <div class="flex flex-wrap items-end justify-between gap-4 mb-12">
+          <h2 id="index-title" class="font-display text-5xl md:text-6xl tracking-tight leading-none">The index</h2>
+          <div class="flex items-center gap-5 text-sm text-mute">
+            <p id="count"></p>
+            <label for="sort" class="sr-only">Sort films</label>
+            <div class="relative">
+              <select id="sort" class="appearance-none rounded-full bg-surface border border-line focus:border-accent text-soft pl-4 pr-9 py-2 transition-colors">
+                <option value="newest">Newest first</option>
+                <option value="rating">Highest rated</option>
+                <option value="title">Title A–Z</option>
+              </select>
+              <svg class="absolute right-3.5 top-1/2 -translate-y-1/2 text-mute pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <ul id="grid" class="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-x-5 md:gap-x-8 gap-y-10 md:gap-y-14">
+          <li aria-hidden="true"><div class="aspect-[2/3] rounded-[4px] bg-surface"></div><div class="mt-4 h-4 w-2/3 bg-surface"></div></li>
+          <li aria-hidden="true"><div class="aspect-[2/3] rounded-[4px] bg-surface"></div><div class="mt-4 h-4 w-2/3 bg-surface"></div></li>
+          <li aria-hidden="true"><div class="aspect-[2/3] rounded-[4px] bg-surface"></div><div class="mt-4 h-4 w-2/3 bg-surface"></div></li>
+          <li aria-hidden="true"><div class="aspect-[2/3] rounded-[4px] bg-surface"></div><div class="mt-4 h-4 w-2/3 bg-surface"></div></li>
+          <li aria-hidden="true"><div class="aspect-[2/3] rounded-[4px] bg-surface"></div><div class="mt-4 h-4 w-2/3 bg-surface"></div></li>
+          <li aria-hidden="true"><div class="aspect-[2/3] rounded-[4px] bg-surface"></div><div class="mt-4 h-4 w-2/3 bg-surface"></div></li>
+        </ul>
+        <div id="state" class="hidden"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="max-w-[1400px] mx-auto px-6 lg:px-12 pb-12">
+    <div class="border-t border-line pt-8 text-sm text-mute flex flex-wrap items-center justify-between gap-4">
+      <span>Poster images are linked from external sources, and any that fail to load are looked up on Wikipedia. No films are hosted here.</span>
+      <a href="admin/" class="text-soft hover:text-bone underline underline-offset-4">Admin</a>
+    </div>
+  </footer>
+
+  <!-- Detail panel -->
+  <div id="detail" class="fixed inset-0 z-50 hidden">
+    <div id="detail-backdrop" class="absolute inset-0 bg-black/70"></div>
+    <aside id="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title"
+           class="absolute right-0 top-0 h-full w-full max-w-[52rem] bg-panel border-l border-line overflow-y-auto translate-x-full transition-transform duration-300">
+      <div class="sticky top-0 z-20 flex items-center justify-between px-6 md:px-10 py-4 bg-panel/90 backdrop-blur border-b border-line">
+        <button id="detail-close" type="button" class="rounded-full border border-line hover:border-accent px-4 py-2 text-sm min-h-[40px] transition-colors">Close</button>
+        <span class="hidden sm:block text-xs text-mute">Esc also closes</span>
+      </div>
+      <div id="detail-body" class="relative overflow-hidden p-6 md:p-10"></div>
+    </aside>
+  </div>
+
+<script>
+const API = 'api';
+const state = { q: '', genre: '', year: '', watch: false };
+let requestId = 0;
+let lastFocus = null;
+let lastMovies = [];
+let watchIds = new Set(); // ids of films saved to this visitor's watchlist
+
+const $ = (id) => document.getElementById(id);
+
+const BOOKMARK = '<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg>';
+
+// Escape anything from the database before putting it in HTML
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function getJSON(url) {
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Server returned ${res.status} for ${url}. Open that URL in a new tab to see the real error.`);
+  return data;
+}
+
+function formatDate(iso) {
+  const d = new Date(iso + 'T00:00:00Z');
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
+/* ---------- Posters ---------- */
+// Title card for missing or broken posters
+function fallbackHTML({ title, year, director }) {
+  return `<div class="relative w-full h-full flex flex-col items-center justify-center text-center px-8 bg-[#171a1d]">
+            <div class="absolute inset-3 border border-accent/25" aria-hidden="true"></div>
+            <p class="relative font-display text-2xl leading-tight">${esc(title)}</p>
+            <span class="relative block w-6 h-px bg-accent my-4" aria-hidden="true"></span>
+            <p class="relative text-xs text-soft leading-relaxed">${esc(director)}<br>${esc(year)}</p>
+          </div>`;
+}
+function posterHTML(m) {
+  if (!m.poster_url) return fallbackHTML(m);
+  return `<img src="${esc(m.poster_url)}" alt="Poster for ${esc(m.title)}" loading="lazy"
+               data-title="${esc(m.title)}" data-year="${m.year}" data-director="${esc(m.director)}"
+               class="w-full h-full object-cover">`;
+}
+
+// Looks up a poster on Wikipedia when a stored poster link is dead. Results are cached.
+const posterLookups = new Map();
+function wikiPoster({ title, year }) {
+  if (!posterLookups.has(title)) {
+    posterLookups.set(title, (async () => {
+      const key = 'poster:' + title;
+      try { const saved = localStorage.getItem(key); if (saved) return saved; } catch (e) {}
+      const url = 'https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*'
+        + '&generator=search&gsrlimit=5&prop=pageimages&piprop=thumbnail&pithumbsize=500'
+        + '&gsrsearch=' + encodeURIComponent(`${title} ${year} film`);
+      const data = await (await fetch(url)).json();
+      const pages = Object.values(data.query?.pages || {}).sort((a, b) => a.index - b.index);
+      const norm = (t) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const want = norm(title);
+      const hit = pages.find(p => p.thumbnail && [want, want + 'film', want + year + 'film'].includes(norm(p.title)))
+        || pages.find(p => p.thumbnail && !/^list of/i.test(p.title) && norm(p.title).includes(want));
+      const src = hit ? hit.thumbnail.source : '';
+      if (src) { try { localStorage.setItem(key, src); } catch (e) {} }
+      return src;
+    })().catch(() => ''));
+  }
+  return posterLookups.get(title);
+}
+
+// Broken poster: try Wikipedia once, then fall back to the title card
+document.addEventListener('error', async (e) => {
+  const img = e.target;
+  if (img.tagName !== 'IMG' || !img.dataset.title) return;
+  if (!img.dataset.retried) {
+    img.dataset.retried = '1';
+    const src = await wikiPoster(img.dataset);
+    if (src) { img.src = src; return; }
+  }
+  img.replaceWith(Object.assign(document.createElement('div'), {
+    className: 'w-full h-full', innerHTML: fallbackHTML(img.dataset)
+  }));
+}, true);
+
+// Blurred copy of the poster as a soft colored backdrop
+function ambientFrom(root, ambient) {
+  const img = root.querySelector('img');
+  if (!img || !ambient) return;
+  const apply = () => {
+    ambient.style.backgroundImage = `url("${img.currentSrc || img.src}")`;
+    ambient.classList.add('on');
+  };
+  if (img.complete && img.naturalWidth) apply();
+  else img.addEventListener('load', apply, { once: true });
+}
+
+/* ---------- Watchlist ---------- */
+async function loadWatch() {
+  try {
+    const { ids } = await getJSON(`${API}/watchlist.php`);
+    watchIds = new Set(ids);
+    paintSaveButtons();
+  } catch (err) { /* the grid will show any connection problem */ }
+}
+
+async function toggleWatch(id) {
+  const action = watchIds.has(id) ? 'remove' : 'add';
+  try {
+    const res = await fetch(`${API}/watchlist.php`, { method: 'POST', body: new URLSearchParams({ action, movie_id: id }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    watchIds = new Set(data.ids);
+    paintSaveButtons();
+    if (state.watch) loadGrid(); // a removed film should leave the watchlist view
+  } catch (err) {
+    console.error('Watchlist update failed:', err.message);
+  }
+}
+
+// Sync every bookmark button and the sidebar count with watchIds
+function paintSaveButtons() {
+  document.querySelectorAll('[data-save]').forEach(b => {
+    const saved = watchIds.has(+b.dataset.save);
+    b.setAttribute('aria-pressed', saved);
+    const label = b.querySelector('[data-save-label]');
+    if (label) label.textContent = saved ? 'Saved to watchlist' : 'Save to watchlist';
+    else b.setAttribute('aria-label', `${saved ? 'Remove' : 'Save'} ${b.dataset.title} ${saved ? 'from' : 'to'} watchlist`);
+  });
+  document.querySelectorAll('[data-watch-count]').forEach(n => { n.textContent = watchIds.size; });
+}
+
+/* ---------- Featured ---------- */
+async function loadFeatured() {
+  const box = $('featured');
+  try {
+    const [m] = await getJSON(`${API}/movies.php?featured=1`);
+    if (!m) { box.innerHTML = ''; box.classList.add('hidden'); return; }
+    const size = m.title.length <= 12 ? 'clamp(3.25rem,8vw,8rem)' : 'clamp(2.75rem,5.5vw,5rem)';
+    box.innerHTML = `
+      <div class="grid md:grid-cols-[minmax(240px,400px)_1fr] gap-12 lg:gap-20 items-center">
+        <button type="button" data-open="${m.id}" aria-label="Open ${esc(m.title)}"
+                class="poster relative block aspect-[2/3] w-full max-w-[400px] overflow-hidden rounded-[4px] bg-surface text-left">
+          ${posterHTML(m)}
+        </button>
+        <div>
+          <p class="inline-block rounded-full border border-accent/40 px-3 py-1 text-xs text-accent mb-6">Featured film</p>
+          <h1 class="font-display tracking-tight leading-[0.95] mb-8" style="font-size:${size}">${esc(m.title)}</h1>
+          <dl class="flex flex-wrap items-end gap-y-5 mb-8 text-sm divide-x divide-white/10">
+            <div class="pr-6"><dt class="text-mute mb-1">Directed by</dt><dd>${esc(m.director)}</dd></div>
+            <div class="px-6"><dt class="text-mute mb-1">Released</dt><dd>${m.year}</dd></div>
+            <div class="px-6"><dt class="text-mute mb-1">Genre</dt><dd>${esc(m.genres.join(', '))}</dd></div>
+            <div class="pl-6"><dt class="text-mute mb-1">Rating</dt><dd class="font-display text-4xl leading-none text-accent">${m.rating.toFixed(1)}</dd></div>
+          </dl>
+          <p class="text-[17px] leading-[1.75] text-soft max-w-[58ch] mb-10">${esc(m.synopsis)}</p>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" data-open="${m.id}" class="rounded-full bg-accent hover:bg-bone text-ink font-medium px-7 py-3 min-h-[44px] text-sm transition-colors">Read the entry</button>
+            <button type="button" data-save="${m.id}" aria-pressed="false" class="save-btn inline-flex items-center gap-2 rounded-full border border-white/20 hover:border-accent px-6 py-3 min-h-[44px] text-sm transition-colors">${BOOKMARK}<span data-save-label>Save to watchlist</span></button>
+          </div>
+        </div>
+      </div>`;
+    ambientFrom(box, $('ambient'));
+    paintSaveButtons();
+  } catch (err) {
+    box.innerHTML = `<p class="text-soft">${esc(err.message)}</p>`;
+  }
+}
+
+/* ---------- Filters ---------- */
+async function loadFilters() {
+  try {
+    const { genres, years } = await getJSON(`${API}/filters.php`);
+    const items = [{ id: '', name: 'All films' }, { id: 'watch', name: 'Watchlist' }, ...genres];
+    $('genres').innerHTML = items.map(g => {
+      const count = g.id === 'watch'
+        ? `<span class="text-xs text-mute tabular-nums" data-watch-count>${watchIds.size}</span>`
+        : (g.total !== undefined ? `<span class="text-xs text-mute tabular-nums">${g.total}</span>` : '');
+      return `
+      <li class="lg:w-full ${g.id === 'watch' ? 'lg:pb-3 lg:mb-3 lg:border-b lg:border-line' : ''}"><button type="button" data-genre="${g.id}" aria-pressed="false"
+           class="genre-btn flex w-full items-baseline justify-between gap-5 rounded-lg px-3 py-2 text-left text-[15px] transition-colors">
+           <span>${esc(g.name)}</span>${count}
+      </button></li>`;
+    }).join('');
+    $('year').innerHTML = '<option value="">Any year</option>' +
+      years.map(y => `<option value="${y}">${y}</option>`).join('');
+    markActiveGenre();
+  } catch (err) { /* grid will show the error */ }
+}
+
+function markActiveGenre() {
+  document.querySelectorAll('.genre-btn').forEach(b => {
+    const g = b.dataset.genre;
+    b.setAttribute('aria-pressed', g === 'watch' ? state.watch : (!state.watch && g === state.genre));
+  });
+  $('index-title').textContent = state.watch ? 'Your watchlist' : 'The index';
+  $('clear').classList.toggle('hidden', !(state.q || state.genre || state.year || state.watch));
+}
+
+/* ---------- Grid ---------- */
+async function loadGrid() {
+  const id = ++requestId;
+  const params = new URLSearchParams();
+  if (state.q) params.set('q', state.q);
+  if (state.genre) params.set('genre', state.genre);
+  if (state.year) params.set('year', state.year);
+  if (state.watch) params.set('watchlist', '1');
+
+  try {
+    const movies = await getJSON(`${API}/movies.php?${params}`);
+    if (id !== requestId) return; // a newer request already replaced this one
+    lastMovies = movies;
+    renderGrid(sortMovies(movies));
+  } catch (err) {
+    if (id !== requestId) return;
+    $('grid').innerHTML = '';
+    $('count').textContent = '';
+    showState(`Couldn't load the films.`, `${err.message} Check that Apache and MySQL are running in XAMPP.`, false);
+  }
+}
+
+function sortMovies(list) {
+  const by = $('sort').value;
+  const copy = [...list];
+  if (by === 'rating') copy.sort((a, b) => b.rating - a.rating || a.title.localeCompare(b.title));
+  if (by === 'title') copy.sort((a, b) => a.title.localeCompare(b.title));
+  return copy; // "newest" is already the server order
+}
+
+function renderGrid(movies) {
+  $('count').textContent = `${movies.length} ${movies.length === 1 ? 'film' : 'films'}`;
+  if (!movies.length) {
+    $('grid').innerHTML = '';
+    const filtered = state.q || state.genre || state.year;
+    if (state.watch && !filtered) {
+      showState('Your watchlist is empty.', 'Tap the bookmark on any poster to save it here.', true, 'Browse all films');
+    } else {
+      showState(
+        filtered || state.watch ? 'Nothing matches those filters.' : 'The archive is empty.',
+        filtered || state.watch ? 'Try a shorter title, another year, or clear the filters.' : 'Add the first film from the admin area.',
+        !!(filtered || state.watch)
+      );
+    }
+    return;
+  }
+  $('state').classList.add('hidden');
+  $('grid').innerHTML = movies.map(m => `
+    <li class="card relative">
+      <button type="button" data-save="${m.id}" data-title="${esc(m.title)}" aria-pressed="false"
+              class="save-btn absolute left-2.5 top-2.5 z-10 grid h-10 w-10 place-items-center rounded-full bg-ink/75 backdrop-blur hover:bg-ink transition-colors">${BOOKMARK}</button>
+      <button type="button" data-open="${m.id}" class="block w-full text-left">
+        <div class="poster relative aspect-[2/3] overflow-hidden rounded-[4px] bg-surface">
+          ${posterHTML(m)}
+          <span class="absolute right-2.5 top-2.5 rounded-full bg-ink/75 backdrop-blur px-2.5 py-1 text-xs font-medium text-accent tabular-nums">${m.rating.toFixed(1)}</span>
+        </div>
+        <div class="mt-4 flex items-baseline justify-between gap-3">
+          <h3 class="card-title font-display text-xl leading-snug">${esc(m.title)}</h3>
+          <span class="text-sm text-mute shrink-0 tabular-nums">${m.year}</span>
+        </div>
+        <p class="text-sm text-mute truncate">${esc(m.genres.join(', '))}</p>
+      </button>
+    </li>`).join('');
+  paintSaveButtons();
+}
+
+function showState(title, text, canClear, clearLabel = 'Clear filters') {
+  const s = $('state');
+  s.className = 'py-20 max-w-md';
+  s.innerHTML = `
+    <p class="font-display text-3xl mb-3">${esc(title)}</p>
+    <p class="text-soft mb-7 leading-relaxed">${esc(text)}</p>
+    ${canClear ? `<button type="button" data-clear class="rounded-full border border-line hover:border-accent px-6 py-2.5 min-h-[44px] text-sm transition-colors">${esc(clearLabel)}</button>` : ''}`;
+}
+
+/* ---------- Detail panel ---------- */
+async function openDetail(id) {
+  lastFocus = document.activeElement;
+  const wrap = $('detail'), panel = $('detail-panel');
+  $('detail-body').innerHTML = '<p class="text-mute">Loading…</p>';
+  wrap.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  requestAnimationFrame(() => panel.classList.remove('translate-x-full'));
+  $('detail-close').focus();
+
+  try {
+    const m = await getJSON(`${API}/movies.php?id=${id}`);
+    $('detail-body').innerHTML = `
+      <div id="detail-ambient" class="ambient absolute inset-x-0 top-0 h-[30rem]" aria-hidden="true"></div>
+      <div class="absolute inset-x-0 top-0 h-[30rem] bg-gradient-to-b from-panel/10 via-panel/70 to-panel" aria-hidden="true"></div>
+      <div class="relative">
+        <div class="grid sm:grid-cols-[15rem_1fr] gap-8 md:gap-10 items-end">
+          <div class="poster aspect-[2/3] w-52 sm:w-full overflow-hidden rounded-[4px] bg-surface">${posterHTML(m)}</div>
+          <div>
+            <h2 id="detail-title" class="font-display text-4xl md:text-6xl leading-[0.95] tracking-tight mb-5">${esc(m.title)}</h2>
+            <ul class="flex flex-wrap gap-2 mb-8">${m.genres.map(g => `<li class="rounded-full border border-white/15 px-3 py-1 text-xs text-soft">${esc(g)}</li>`).join('')}</ul>
+            <dl class="grid grid-cols-2 gap-x-6 gap-y-6 text-sm">
+              <div><dt class="text-mute mb-1">Rating</dt><dd class="font-display text-4xl leading-none text-accent">${m.rating.toFixed(1)}<span class="font-sans text-sm text-mute ml-2">out of 10</span></dd></div>
+              <div><dt class="text-mute mb-1">Released</dt><dd>${formatDate(m.release_date)}</dd></div>
+              <div class="col-span-2"><dt class="text-mute mb-1">Directed by</dt><dd>${esc(m.director)}</dd></div>
+            </dl>
+            <button type="button" data-save="${m.id}" aria-pressed="false" class="save-btn mt-8 inline-flex items-center gap-2 rounded-full border border-white/20 hover:border-accent px-6 py-3 min-h-[44px] text-sm transition-colors">${BOOKMARK}<span data-save-label>Save to watchlist</span></button>
+          </div>
+        </div>
+        <p class="text-lg leading-[1.75] text-soft max-w-[60ch] mt-12">${esc(m.synopsis)}</p>
+        <div class="mt-12">
+          <h3 class="text-sm text-mute mb-3">Cast</h3>
+          ${m.cast.length
+            ? `<ul class="grid sm:grid-cols-2 gap-x-10 text-[15px]">${m.cast.map(c => `<li class="border-b border-line py-2.5">${esc(c)}</li>`).join('')}</ul>`
+            : '<p>Not listed</p>'}
+        </div>
+      </div>`;
+    ambientFrom($('detail-body'), $('detail-ambient'));
+    paintSaveButtons();
+  } catch (err) {
+    $('detail-body').innerHTML = `<p class="font-display text-3xl mb-3">Couldn't open this film.</p><p class="text-soft">${esc(err.message)}</p>`;
+  }
+}
+
+function closeDetail() {
+  const wrap = $('detail');
+  if (wrap.classList.contains('hidden')) return;
+  $('detail-panel').classList.add('translate-x-full');
+  document.body.style.overflow = '';
+  setTimeout(() => wrap.classList.add('hidden'), 300);
+  if (lastFocus) lastFocus.focus();
+}
+
+/* ---------- Events ---------- */
+function clearFilters() {
+  state.q = state.genre = state.year = '';
+  state.watch = false;
+  $('search').value = '';
+  $('year').value = '';
+  markActiveGenre();
+  loadGrid();
+}
+
+let timer;
+$('search').addEventListener('input', (e) => {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    state.q = e.target.value.trim().slice(0, 100);
+    markActiveGenre();
+    loadGrid();
+  }, 250);
+});
+$('year').addEventListener('change', (e) => { state.year = e.target.value; markActiveGenre(); loadGrid(); });
+$('sort').addEventListener('change', () => renderGrid(sortMovies(lastMovies)));
+$('genres').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-genre]');
+  if (!b) return;
+  const g = b.dataset.genre;
+  state.watch = g === 'watch';
+  state.genre = state.watch ? '' : g;
+  markActiveGenre();
+  loadGrid();
+});
+$('clear').addEventListener('click', clearFilters);
+$('state').addEventListener('click', (e) => { if (e.target.closest('[data-clear]')) clearFilters(); });
+
+document.addEventListener('click', (e) => {
+  const saver = e.target.closest('[data-save]');
+  if (saver) { toggleWatch(+saver.dataset.save); return; }
+  const opener = e.target.closest('[data-open]');
+  if (opener) openDetail(opener.dataset.open);
+});
+$('detail-close').addEventListener('click', closeDetail);
+$('detail-backdrop').addEventListener('click', closeDetail);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+
+/* ---------- Start ---------- */
+loadFeatured();
+loadFilters();
+loadGrid();
+loadWatch();
+</script>
+</body>
+</html>
